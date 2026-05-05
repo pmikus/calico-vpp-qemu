@@ -707,6 +707,7 @@ final_message: |
   Node IP: ${WORKER1_IP}
   Access: ssh testuser@${WORKER1_IP}
 EOF
+}
 
 # ── Create Cloud-Init ISOs
 create_init_worker1() {
@@ -758,6 +759,8 @@ NETSCRIPT
 #!/bin/bash
 # Setup PCI interfaces
 
+sudo python3 /opt/dpdk/usertools/dpdk-devbind.py -b ice 0000:b8:00.0 0000:ba:00.0
+
 echo 1 | sudo tee /sys/class/net/ens1280np0/device/sriov_numvfs
 echo 1 | sudo tee /sys/class/net/ens1281np0/device/sriov_numvfs
 
@@ -767,7 +770,7 @@ PCISCRIPT
 
 # ── Create VM Startup Scripts
 create_init_vms() {
-    echo "[8/9] Creating VM startup scripts..."
+    echo "[9/9] Creating VM startup scripts..."
 
     cat > stop-all.sh <<'STOPSCRIPT'
 #!/bin/bash
@@ -832,8 +835,8 @@ sudo /usr/bin/qemu-system-x86_64 \
     -enable-kvm \
     -netdev bridge,id=net0,br=br-kubernetes \
     -device virtio-net-pci,netdev=net0,mac=52:54:00:12:34:11 \
-    -device vfio-pci,host=0000:b8:00.0,bus=pci.0,addr=0x5 \
-    -device vfio-pci,host=0000:ba:00.0,bus=pci.0,addr=0x6 \
+    -device vfio-pci,host=0000:b8:01.0,bus=pci.0,addr=0x5 \
+    -device vfio-pci,host=0000:ba:01.0,bus=pci.0,addr=0x6 \
     -pidfile worker1.pid \
     -cpu host,migratable=on \
     -machine pc,accel=kvm,usb=off,mem-merge=off,hpet=off \

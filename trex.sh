@@ -55,13 +55,13 @@ echo "- c: 16
 sudo ./t-rex-64 -i --prefix $(hostname) --hdrh --no-scapy-server --mbuf-factor 32
 
 
-vpp# set ip neighbor avf-0/38/1/0 192.168.1.1 40:a6:b7:ca:2a:70 static
-vpp# set ip neighbor avf-0/3a/1/0 192.168.2.1 40:a6:b7:ca:2a:74 static
+# vpp# set ip neighbor avf-0/38/1/0 192.168.1.1 40:a6:b7:ca:2a:70 static
+# vpp# set ip neighbor avf-0/3a/1/0 192.168.2.1 40:a6:b7:ca:2a:74 static
 
 
 python3 '/tmp/csit-master/GPL/tools/trex/trex_stl_profile.py' --profile '/tmp/csit-master/GPL/traffic_profiles/trex/trex-stl-ethip4-ip4src253.py' --duration 1.0 --frame_size 64 --rate '1000.0pps' --ports 0 1 --traffic_directions 1 --delay 0.0
 
-ansible-playbook --vault-password-file=vault_pass --extra-vars '@vault.yml' --inventory inventories/lf_inventory/hosts site.yaml --limit "10.30.51.40" --tags "calico" --extra-vars "calico_vpp_state=absent"
+# ansible-playbook --vault-password-file=vault_pass --extra-vars '@vault.yml' --inventory inventories/lf_inventory/hosts site.yaml --limit "10.30.51.40" --tags "calico" --extra-vars "calico_vpp_state=absent"
 
 
 
