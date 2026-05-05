@@ -710,7 +710,7 @@ EOF
 }
 
 # ── Create Cloud-Init ISOs
-create_init_worker1() {
+create_init_iso() {
     echo "[7/9] Create cloud-init ISOs..."
 
     # Control plane ISO
@@ -858,6 +858,7 @@ download_cloud_image
 create_backing_store
 create_init_control
 create_init_worker1
+create_init_iso
 create_init_network
 create_init_vms
 
