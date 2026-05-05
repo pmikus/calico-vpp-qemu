@@ -604,6 +604,8 @@ runcmd:
   - kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.3/manifests/tigera-operator.yaml
   - kubectl create -f /etc/calico-vpp-multinet.yaml
   - kubectl get nodes
+  - curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 -o /usr/share/bin/kubectl-calico
+  - chmod +x /usr/share/bin/kubectl-calico
 
 final_message: |
   K3s Control Plane Ready!
@@ -785,6 +787,7 @@ echo "Network: $NETWORK_CIDR"
 sudo mkdir -p /etc/qemu/
 echo "allow br-kubernetes" | sudo tee /etc/qemu/bridge.conf
 NETSCRIPT
+    chmod +x setup-network.sh
 
     cat > setup-pci.sh <<'PCISCRIPT'
 #!/bin/bash
@@ -797,6 +800,7 @@ echo 1 | sudo tee /sys/class/net/ens1281np0/device/sriov_numvfs
 
 sudo python3 /opt/dpdk/usertools/dpdk-devbind.py -b vfio-pci 0000:b8:01.0 0000:ba:01.0
 PCISCRIPT
+    chmod +x setup-pci.sh
 }
 
 # ── Create VM Startup Scripts
@@ -825,6 +829,7 @@ fi
 
 echo "All VMs stopped"
 STOPSCRIPT
+    chmod +x stop-all.sh
 
     # Headless versions
     cat > start-control.sh <<'CONTROL'
@@ -852,6 +857,7 @@ sudo /usr/bin/qemu-system-x86_64 \
     -drive file=control/cloud-init.iso,index=1,media=cdrom \
     -serial file:control-serial.log
 CONTROL
+    chmod +x start-control.sh
 
     cat > start-worker1.sh <<'WORKER'
 #!/bin/bash
@@ -880,6 +886,7 @@ sudo /usr/bin/qemu-system-x86_64 \
     -drive file=worker1/cloud-init.iso,index=1,media=cdrom \
     -serial file:worker1-serial.log
 WORKER
+    chmod +x start-worker1.sh
 }
 
 
@@ -893,4 +900,3 @@ create_init_iso
 create_init_network
 create_init_vms
 
-chmod +x *.sh
