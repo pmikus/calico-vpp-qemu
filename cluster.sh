@@ -3,6 +3,8 @@
 
 SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
+[ ! -f .env ] || export $(grep -v '^#' .env | xargs)
+
 # script configuration
 export BASE_DIR=${SCRIPTDIR:-$(pwd)}
 
@@ -535,7 +537,7 @@ write_files:
             initContainers:
             - command:
               - /entrypoint
-              image: docker.io/calicovpp/install-whereabouts:v3.31.0
+              image: docker.io/calicovpp/install-whereabouts:v3.27.0
               name: install-whereabouts
               volumeMounts:
               - mountPath: /host/opt/cni/bin
