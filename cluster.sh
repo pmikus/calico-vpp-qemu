@@ -16,9 +16,38 @@ export BRIDGE_NAME=${BRIDGE_NAME:-"br-kubernetes"}
 # k3s configuration
 export K8S_POD_CIDR=${K8S_POD_CIDR:-"192.168.0.0/16"}
 
+# colour codes
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+RESET='\033[0m'
+
+# ── Helpers
+log()  { echo -e "${CYAN}[INFO]${RESET}  $*"; }
+ok()   { echo -e "${GREEN}[OK]${RESET}    $*"; }
+warn() { echo -e "${YELLOW}[WARN]${RESET}  $*"; }
+die()  { echo -e "${RED}[ERROR]${RESET} $*" >&2; exit 1; }
+
+usage() {
+  grep '^#' "$0" | grep -v '#!/' | sed 's/^# \{0,1\}//'
+  exit 0
+}
+
+# ── Argument parsing
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p|--pci)     SETUP_PCI=true; shift ;;
+    -n|--network) SETUP_NET=true; shift ;;
+    -h|--help)    usage ;;
+    *) die "Unknown option: $1. Use --help for usage." ;;
+  esac
+done
+
 # ── Create SSH keys
 create_ssh_keys() {
-    echo "[1/9] Creating SSH keys"
+    log "[1/9] Creating SSH keys"
 
     if [ ! -f $HOME/.ssh/id_ed25519_qemu ]; then
         ssh-keygen -t ed25519 -C "testuser@$HOSTNAME" -f "$HOME/.ssh/id_ed25519_qemu" -q -N ""
@@ -28,7 +57,7 @@ create_ssh_keys() {
 
 # ── Create Directory Structure
 create_dir_structure() {
-    echo "[2/9] Creating directory structure"
+    log "[2/9] Creating directory structure"
 
     mkdir -p "$BASE_DIR"/{control,worker1}
     cd "$BASE_DIR"
@@ -37,16 +66,16 @@ create_dir_structure() {
 # ── Download Base Cloud Image
 download_cloud_image() {
     if [ ! -f "$BASE_IMAGE" ]; then
-        echo "[3/9] Downloading Base cloud image..."
+        log "[3/9] Downloading Base cloud image..."
         wget https://cloud-images.ubuntu.com/noble/current/$BASE_IMAGE -O "$BASE_IMAGE"
     else
-        echo "[3/9] Base cloud image already exists"
+        log "[3/9] Base cloud image already exists"
     fi
 }
 
 # ── Create Backing Store (Overlay Image)
 create_backing_store() {
-    echo "[4/9] Creating VM disk images..."
+    log "[4/9] Creating VM disk images..."
 
     qemu-img create -f qcow2 -F qcow2 -b "../$BASE_IMAGE" control/overlay.qcow2 20G
     qemu-img create -f qcow2 -F qcow2 -b "../$BASE_IMAGE" worker1/overlay.qcow2 20G
@@ -54,7 +83,7 @@ create_backing_store() {
 
 # ── Create Cloud-Init configuration for Control Plane
 create_init_control() {
-    echo "[5/9] Creating cloud-init configuration for control plane..."
+    log "[5/9] Creating cloud-init configuration for control plane..."
 
     # Create meta-data file
     cat > control/meta-data <<EOF
@@ -399,7 +428,7 @@ write_files:
               k8s-app: calico-vpp-node
           spec:
             containers:
-            - image: docker.io/calicovpp/multinet-monitor:latest
+            - image: docker.io/calicovpp/multinet-monitor:v3.31.0
               imagePullPolicy: IfNotPresent
               name: multinet-monitor
               resources:
@@ -440,7 +469,7 @@ write_files:
               envFrom:
               - configMapRef:
                   name: calico-vpp-config
-              image: docker.io/calicovpp/agent:latest
+              image: docker.io/calicovpp/agent:v3.31.0
               imagePullPolicy: IfNotPresent
               name: agent
               resources:
@@ -472,7 +501,7 @@ write_files:
               envFrom:
               - configMapRef:
                   name: calico-vpp-config
-              image: docker.io/calicovpp/vpp:latest
+              image: docker.io/calicovpp/vpp:v3.31.0
               imagePullPolicy: IfNotPresent
               name: vpp
               resources:
@@ -506,7 +535,7 @@ write_files:
             initContainers:
             - command:
               - /entrypoint
-              image: docker.io/calicovpp/install-whereabouts:latest
+              image: docker.io/calicovpp/install-whereabouts:v3.31.0
               name: install-whereabouts
               volumeMounts:
               - mountPath: /host/opt/cni/bin
@@ -583,7 +612,7 @@ EOF
 
 # ── Create Cloud-Init Files for Worker
 create_init_worker1() {
-    echo "[6/9] Creating cloud-init configuration for worker..."
+    log "[6/9] Creating cloud-init configuration for worker..."
 
     # Create meta-data file
     cat > worker1/meta-data <<EOF
@@ -711,7 +740,7 @@ EOF
 
 # ── Create Cloud-Init ISOs
 create_init_iso() {
-    echo "[7/9] Create cloud-init ISOs..."
+    log "[7/9] Create cloud-init ISOs..."
 
     # Control plane ISO
     cloud-localds control/cloud-init.iso control/user-data control/meta-data --network-config control/network-config
@@ -721,7 +750,7 @@ create_init_iso() {
 
 # ── Create Network Bridge Script
 create_init_network() {
-    echo "[8/9] Creating network setup script..."
+    log "[8/9] Creating network setup script..."
 
     cat > setup-network.sh <<NETSCRIPT
 #!/bin/bash
@@ -770,7 +799,7 @@ PCISCRIPT
 
 # ── Create VM Startup Scripts
 create_init_vms() {
-    echo "[9/9] Creating VM startup scripts..."
+    log "[9/9] Creating VM startup scripts..."
 
     cat > stop-all.sh <<'STOPSCRIPT'
 #!/bin/bash
@@ -863,4 +892,3 @@ create_init_network
 create_init_vms
 
 chmod +x *.sh
-
