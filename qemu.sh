@@ -16,55 +16,54 @@ export BRIDGE_NAME=${BRIDGE_NAME:-"br-kubernetes"}
 # k3s configuration
 export K8S_POD_CIDR=${K8S_POD_CIDR:-"192.168.0.0/16"}
 
-# =============================================================================
-# STEP 1: Create SSH keys
-# =============================================================================
-echo "[1/9] Creating SSH keys"
+# ── Create SSH keys
+create_ssh_keys() {
+    echo "[1/9] Creating SSH keys"
 
-if [ ! -f $HOME/.ssh/id_ed25519_qemu ]; then
-    ssh-keygen -t ed25519 -C "testuser@$HOSTNAME" -f "$HOME/.ssh/id_ed25519_qemu" -q -N ""
-fi
-export SSH_PUBLIC_KEY=$(<$HOME/.ssh/id_ed25519_qemu.pub)
+    if [ ! -f $HOME/.ssh/id_ed25519_qemu ]; then
+        ssh-keygen -t ed25519 -C "testuser@$HOSTNAME" -f "$HOME/.ssh/id_ed25519_qemu" -q -N ""
+    fi
+    export SSH_PUBLIC_KEY=$(<$HOME/.ssh/id_ed25519_qemu.pub)
+}
 
-# =============================================================================
-# STEP 2: Create Directory Structure
-# =============================================================================
-echo "[2/9] Creating directory structure"
+# ── Create Directory Structure
+create_dir_structure() {
+    echo "[2/9] Creating directory structure"
 
-mkdir -p "$BASE_DIR"/{control,worker1}
-cd "$BASE_DIR"
+    mkdir -p "$BASE_DIR"/{control,worker1}
+    cd "$BASE_DIR"
+}
 
-# =============================================================================
-# STEP 3: Download Base Cloud Image
-# =============================================================================
-if [ ! -f "$BASE_IMAGE" ]; then
-    echo "[3/9] Downloading Base cloud image..."
-    wget https://cloud-images.ubuntu.com/noble/current/$BASE_IMAGE -O "$BASE_IMAGE"
-else
-    echo "[3/9] Base cloud image already exists"
-fi
+# ── Download Base Cloud Image
+download_cloud_image() {
+    if [ ! -f "$BASE_IMAGE" ]; then
+        echo "[3/9] Downloading Base cloud image..."
+        wget https://cloud-images.ubuntu.com/noble/current/$BASE_IMAGE -O "$BASE_IMAGE"
+    else
+        echo "[3/9] Base cloud image already exists"
+    fi
+}
 
-# =============================================================================
-# STEP 4: Create Backing Store (Overlay Image)
-# =============================================================================
-echo "[4/9] Creating VM disk images..."
+# ── Create Backing Store (Overlay Image)
+create_backing_store() {
+    echo "[4/9] Creating VM disk images..."
 
-qemu-img create -f qcow2 -F qcow2 -b "../$BASE_IMAGE" control/overlay.qcow2 20G
-qemu-img create -f qcow2 -F qcow2 -b "../$BASE_IMAGE" worker1/overlay.qcow2 20G
+    qemu-img create -f qcow2 -F qcow2 -b "../$BASE_IMAGE" control/overlay.qcow2 20G
+    qemu-img create -f qcow2 -F qcow2 -b "../$BASE_IMAGE" worker1/overlay.qcow2 20G
+}
 
-# =============================================================================
-# STEP 5: Create Cloud-Init configuration for Control Plane
-# =============================================================================
-echo "[5/9] Creating cloud-init configuration for control plane..."
+# ── Create Cloud-Init configuration for Control Plane
+create_init_control() {
+    echo "[5/9] Creating cloud-init configuration for control plane..."
 
-# Create meta-data file
-cat > control/meta-data <<EOF
+    # Create meta-data file
+    cat > control/meta-data <<EOF
 instance-id: control
 local-hostname: control
 EOF
 
-# Create network-config (optional - for static IP)
-cat > control/network-config <<EOF
+    # Create network-config (for static IP)
+    cat > control/network-config <<EOF
 network:
   version: 2
   ethernets:
@@ -84,7 +83,7 @@ network:
         - 1.1.1.1
 EOF
 
-cat > control/user-data <<EOF
+    cat > control/user-data <<EOF
 #cloud-config
 
 apt:
@@ -580,20 +579,20 @@ final_message: |
   Node IP: ${CONTROL_IP}
   Access: ssh testuser@${CONTROL_IP}
 EOF
+}
 
-# =============================================================================
-# STEP 6: Create Cloud-Init Files for Worker
-# =============================================================================
-echo "[6/9] Creating cloud-init configuration for worker..."
+# ── Create Cloud-Init Files for Worker
+create_init_worker1() {
+    echo "[6/9] Creating cloud-init configuration for worker..."
 
-# Create meta-data file
-cat > worker1/meta-data <<EOF
+    # Create meta-data file
+    cat > worker1/meta-data <<EOF
 instance-id: worker1
 local-hostname: worker1
 EOF
 
-# Create network-config (optional - for static IP)
-cat > worker1/network-config <<EOF
+    # Create network-config (optional - for static IP)
+    cat > worker1/network-config <<EOF
 network:
   version: 2
   ethernets:
@@ -613,7 +612,7 @@ network:
         - 1.1.1.1
 EOF
 
-cat > worker1/user-data <<EOF
+    cat > worker1/user-data <<EOF
 #cloud-config
 
 apt:
@@ -709,24 +708,21 @@ final_message: |
   Access: ssh testuser@${WORKER1_IP}
 EOF
 
+# ── Create Cloud-Init ISOs
+create_init_worker1() {
+    echo "[7/9] Create cloud-init ISOs..."
 
-# =============================================================================
-# STEP 7: Generating Cloud-Init ISOs
-# =============================================================================
-echo "[7/9] Generating cloud-init ISOs..."
+    # Control plane ISO
+    cloud-localds control/cloud-init.iso control/user-data control/meta-data --network-config control/network-config
+    # Worker ISO
+    cloud-localds worker1/cloud-init.iso worker1/user-data worker1/meta-data --network-config worker1/network-config
+}
 
-# Control plane ISO
-cloud-localds control/cloud-init.iso control/user-data control/meta-data --network-config control/network-config
-# Worker ISO
-cloud-localds worker1/cloud-init.iso worker1/user-data worker1/meta-data --network-config worker1/network-config
+# ── Create Network Bridge Script
+create_init_network() {
+    echo "[8/9] Creating network setup script..."
 
-
-# =============================================================================
-# STEP 8: Create Network Bridge Script
-# =============================================================================
-echo "[8/9] Creating network setup script..."
-
-cat > setup-network.sh <<NETSCRIPT
+    cat > setup-network.sh <<NETSCRIPT
 #!/bin/bash
 # Setup network bridge for k3s cluster VMs
 
@@ -753,24 +749,27 @@ sudo iptables -A FORWARD -i "$BRIDGE_NAME" -o "$BRIDGE_NAME" -j ACCEPT
 echo "Bridge network created successfully!"
 echo "Bridge IP: 172.16.0.1"
 echo "Network: $NETWORK_CIDR"
+
+sudo mkdir -p /etc/qemu/
+echo "allow br-kubernetes" | sudo tee /etc/qemu/bridge.conf
 NETSCRIPT
 
-cat > setup-pci.sh <<'PCISCRIPT'
+    cat > setup-pci.sh <<'PCISCRIPT'
 #!/bin/bash
 # Setup PCI interfaces
 
-echo 1 | sudo tee /sys/class/net/enp56s0np0/device/sriov_numvfs
-echo 1 | sudo tee /sys/class/net/enp58s0np0/device/sriov_numvfs
+echo 1 | sudo tee /sys/class/net/ens1280np0/device/sriov_numvfs
+echo 1 | sudo tee /sys/class/net/ens1281np0/device/sriov_numvfs
 
-sudo python3 /opt/dpdk/usertools/dpdk-devbind.py -b vfio-pci 0000:38:01.0 0000:3a:01.0
+sudo python3 /opt/dpdk/usertools/dpdk-devbind.py -b vfio-pci 0000:b8:01.0 0000:ba:01.0
 PCISCRIPT
+}
 
-# =============================================================================
-# STEP 8: Create VM Startup Scripts
-# =============================================================================
-echo "[8/8] Creating VM startup scripts..."
+# ── Create VM Startup Scripts
+create_init_vms() {
+    echo "[8/9] Creating VM startup scripts..."
 
-cat > stop-all.sh <<'STOPSCRIPT'
+    cat > stop-all.sh <<'STOPSCRIPT'
 #!/bin/bash
 # Stop all VMs
 
@@ -780,21 +779,21 @@ if [ -f control.pid ]; then
     echo "Stopping control plane..."
     ssh-keygen -f '/home/testuser/.ssh/known_hosts' -R '172.16.0.10'
     sudo kill $(sudo cat control.pid) 2>/dev/null
-    rm control/overlay.qcow2
+    sudo rm control/overlay.qcow2
 fi
 
 if [ -f worker1.pid ]; then
     echo "Stopping worker1..."
     ssh-keygen -f '/home/testuser/.ssh/known_hosts' -R '172.16.0.11'
     sudo kill $(sudo cat worker1.pid) 2>/dev/null
-    rm worker1/overlay.qcow2
+    sudo rm worker1/overlay.qcow2
 fi
 
 echo "All VMs stopped"
 STOPSCRIPT
 
-# Headless versions
-cat > start-control.sh <<'CONTROL'
+    # Headless versions
+    cat > start-control.sh <<'CONTROL'
 #!/bin/bash
 # Start k3s control plane VM (headless)
 
@@ -820,7 +819,7 @@ sudo /usr/bin/qemu-system-x86_64 \
     -serial file:control-serial.log
 CONTROL
 
-cat > start-worker1.sh <<'WORKER'
+    cat > start-worker1.sh <<'WORKER'
 #!/bin/bash
 # Start k3s worker VM (headless)
 
@@ -833,8 +832,8 @@ sudo /usr/bin/qemu-system-x86_64 \
     -enable-kvm \
     -netdev bridge,id=net0,br=br-kubernetes \
     -device virtio-net-pci,netdev=net0,mac=52:54:00:12:34:11 \
-    -device vfio-pci,host=0000:38:01.0,bus=pci.0,addr=0x5 \
-    -device vfio-pci,host=0000:3a:01.0,bus=pci.0,addr=0x6 \
+    -device vfio-pci,host=0000:b8:00.0,bus=pci.0,addr=0x5 \
+    -device vfio-pci,host=0000:ba:00.0,bus=pci.0,addr=0x6 \
     -pidfile worker1.pid \
     -cpu host,migratable=on \
     -machine pc,accel=kvm,usb=off,mem-merge=off,hpet=off \
@@ -847,28 +846,17 @@ sudo /usr/bin/qemu-system-x86_64 \
     -drive file=worker1/cloud-init.iso,index=1,media=cdrom \
     -serial file:worker1-serial.log
 WORKER
+}
+
+
+create_ssh_keys
+create_dir_structure
+download_cloud_image
+create_backing_store
+create_init_control
+create_init_worker1
+create_init_network
+create_init_vms
 
 chmod +x *.sh
 
-
-# sudo cat control-serial.log
-# sudo cat worker1-serial.log
-
-# Control K8S
-  #- curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.35/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-  #- echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.35/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
-  #- apt-get update && apt-get install -y kubelet kubeadm kubectl
-  #- systemctl enable --now kubelet
-  #- kubeadm init --pod-network-cidr=192.168.0.0/16
-  #- kubeadm token create $(kubeadm token generate) --print-join-command >> /etc/join-command
-  #- mkdir -p /home/testuser/.kube
-  #- cp -i /etc/kubernetes/admin.conf /home/testuser/.kube/config
-  #- chown -R testuser:testuser /home/testuser/.kube/
-# Worker K8S
-  #- curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.35/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-  #- echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.35/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
-  #- apt-get update && apt-get install -y kubelet kubeadm kubectl
-  #- systemctl enable --now kubelet
-
-
-#  ip neigh add 169.0.254.1  lladdr 51:53:00:17:34:09 dev eth0
