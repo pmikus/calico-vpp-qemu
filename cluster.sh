@@ -809,19 +809,16 @@ create_init_network() {
         pci_devices="${pci_devices} $(worker_pci1 ${i}) $(worker_pci2 ${i})"
     done
 
-    cat > setup-pci.sh <<PCISCRIPT
-#!/bin/bash
-# Setup PCI interfaces
+    if [[ "$SETUP_PCI" == true ]]; then
+        sudo python3 /opt/dpdk/usertools/dpdk-devbind.py -b ice 0000:b8:00.0 0000:ba:00.0
 
-sudo python3 /opt/dpdk/usertools/dpdk-devbind.py -b ice 0000:b8:00.0 0000:ba:00.0
+        echo 0 | sudo tee /sys/class/net/ens1280np0/device/sriov_numvfs
+        echo 0 | sudo tee /sys/class/net/ens1281np0/device/sriov_numvfs
+        echo ${WORKER_COUNT} | sudo tee /sys/class/net/ens1280np0/device/sriov_numvfs
+        echo ${WORKER_COUNT} | sudo tee /sys/class/net/ens1281np0/device/sriov_numvfs
 
-echo ${WORKER_COUNT} | sudo tee /sys/class/net/ens1280np0/device/sriov_numvfs
-echo ${WORKER_COUNT} | sudo tee /sys/class/net/ens1281np0/device/sriov_numvfs
-
-sudo python3 /opt/dpdk/usertools/dpdk-devbind.py -b vfio-pci${pci_devices}
-PCISCRIPT
-
-    chmod +x setup-pci.sh
+        sudo python3 /opt/dpdk/usertools/dpdk-devbind.py -b vfio-pci${pci_devices}
+    fi
 }
 
 # ── Create VM Startup Scripts
