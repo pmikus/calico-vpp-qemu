@@ -773,40 +773,36 @@ create_init_iso() {
 
 # ── Create Network Bridge Script
 create_init_network() {
-    log "[8/9] Creating network setup script..."
+    log "[8/9] Creating network script..."
 
-    cat > setup-network.sh <<NETSCRIPT
-#!/bin/bash
-# Setup network bridge for k3s cluster VMs
+    if [[ "$SETUP_NET" == true ]]; then
+        # Check if bridge already exists
+        if ip link show "$BRIDGE_NAME" &> /dev/null; then
+            echo "Bridge $BRIDGE_NAME already exists"
+            exit 0
+        fi
 
-# Check if bridge already exists
-if ip link show "$BRIDGE_NAME" &> /dev/null; then
-    echo "Bridge $BRIDGE_NAME already exists"
-    exit 0
-fi
+        echo "Creating bridge network $BRIDGE_NAME..."
 
-echo "Creating bridge network $BRIDGE_NAME..."
+        # Create bridge
+        sudo ip link add name "$BRIDGE_NAME" type bridge
+        sudo ip addr add 172.16.0.1/24 dev "$BRIDGE_NAME"
+        sudo ip link set "$BRIDGE_NAME" up
 
-# Create bridge
-sudo ip link add name "$BRIDGE_NAME" type bridge
-sudo ip addr add 172.16.0.1/24 dev "$BRIDGE_NAME"
-sudo ip link set "$BRIDGE_NAME" up
+        # Enable IP forwarding
+        sudo sysctl -w net.ipv4.ip_forward=1
 
-# Enable IP forwarding
-sudo sysctl -w net.ipv4.ip_forward=1
+        # Setup NAT for internet access
+        sudo iptables -t nat -A POSTROUTING -s $NETWORK_CIDR ! -d $NETWORK_CIDR -j MASQUERADE
+        sudo iptables -A FORWARD -i "$BRIDGE_NAME" -o "$BRIDGE_NAME" -j ACCEPT
 
-# Setup NAT for internet access
-sudo iptables -t nat -A POSTROUTING -s $NETWORK_CIDR ! -d $NETWORK_CIDR -j MASQUERADE
-sudo iptables -A FORWARD -i "$BRIDGE_NAME" -o "$BRIDGE_NAME" -j ACCEPT
+        echo "Bridge network created successfully!"
+        echo "Bridge IP: 172.16.0.1"
+        echo "Network: $NETWORK_CIDR"
 
-echo "Bridge network created successfully!"
-echo "Bridge IP: 172.16.0.1"
-echo "Network: $NETWORK_CIDR"
-
-sudo mkdir -p /etc/qemu/
-echo "allow br-kubernetes" | sudo tee /etc/qemu/bridge.conf
-NETSCRIPT
-    chmod +x setup-network.sh
+        sudo mkdir -p /etc/qemu/
+        echo "allow br-kubernetes" | sudo tee /etc/qemu/bridge.conf
+    fi
 
     local pci_devices=""
     for i in $(seq 1 "$WORKER_COUNT"); do
