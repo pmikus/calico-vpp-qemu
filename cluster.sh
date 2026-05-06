@@ -779,29 +779,28 @@ create_init_network() {
         # Check if bridge already exists
         if ip link show "$BRIDGE_NAME" &> /dev/null; then
             warn "Bridge $BRIDGE_NAME already exists"
-            return 0
+        else
+            log "Creating bridge network $BRIDGE_NAME..."
+
+            # Create bridge
+            sudo ip link add name "$BRIDGE_NAME" type bridge
+            sudo ip addr add 172.16.0.1/24 dev "$BRIDGE_NAME"
+            sudo ip link set "$BRIDGE_NAME" up
+
+            # Enable IP forwarding
+            sudo sysctl -w net.ipv4.ip_forward=1
+
+            # Setup NAT for internet access
+            sudo iptables -t nat -A POSTROUTING -s $NETWORK_CIDR ! -d $NETWORK_CIDR -j MASQUERADE
+            sudo iptables -A FORWARD -i "$BRIDGE_NAME" -o "$BRIDGE_NAME" -j ACCEPT
+
+            log "Bridge network created successfully!"
+            log "Bridge IP: 172.16.0.1"
+            log "Network: $NETWORK_CIDR"
+
+            sudo mkdir -p /etc/qemu/
+            echo "allow br-kubernetes" | sudo tee /etc/qemu/bridge.conf
         fi
-
-        log "Creating bridge network $BRIDGE_NAME..."
-
-        # Create bridge
-        sudo ip link add name "$BRIDGE_NAME" type bridge
-        sudo ip addr add 172.16.0.1/24 dev "$BRIDGE_NAME"
-        sudo ip link set "$BRIDGE_NAME" up
-
-        # Enable IP forwarding
-        sudo sysctl -w net.ipv4.ip_forward=1
-
-        # Setup NAT for internet access
-        sudo iptables -t nat -A POSTROUTING -s $NETWORK_CIDR ! -d $NETWORK_CIDR -j MASQUERADE
-        sudo iptables -A FORWARD -i "$BRIDGE_NAME" -o "$BRIDGE_NAME" -j ACCEPT
-
-        log "Bridge network created successfully!"
-        log "Bridge IP: 172.16.0.1"
-        log "Network: $NETWORK_CIDR"
-
-        sudo mkdir -p /etc/qemu/
-        echo "allow br-kubernetes" | sudo tee /etc/qemu/bridge.conf
     fi
 
     local pci_devices=""
