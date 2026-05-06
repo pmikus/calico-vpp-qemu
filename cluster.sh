@@ -6,16 +6,6 @@ export BASE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd
 
 [ ! -f .env ] || export $(grep -v '^#' .env | xargs)
 
-# vm configuration
-export BASE_IMAGE=${BASE_IMAGE:-"noble-server-cloudimg-amd64.img"}
-export CONTROL_IP=${CONTROL_IP:-"172.16.0.10"}
-export WORKER_COUNT=${WORKER_COUNT:-1}
-export NETWORK_CIDR=${NETWORK_CIDR:-"172.16.0.0/24"}
-export BRIDGE_NAME=${BRIDGE_NAME:-"br-kubernetes"}
-
-# k3s configuration
-export K8S_POD_CIDR=${K8S_POD_CIDR:-"192.168.0.0/16"}
-
 # colour codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -850,28 +840,20 @@ cd "$(dirname "$0")"
 
 if [ -f control.pid ]; then
     echo "Stopping control plane..."
-    ssh-keygen -f '/home/testuser/.ssh/known_hosts' -R '172.16.0.10'
     sudo kill $(sudo cat control.pid) 2>/dev/null
     sudo rm control/overlay.qcow2
 fi
-STOPSCRIPT
 
-    for i in $(seq 1 "$WORKER_COUNT"); do
-        local worker
-        local worker_ip
-        worker="$(worker_name "$i")"
-        worker_ip="$(worker_ip "$i")"
-        cat >> stop-all.sh <<EOF
-if [ -f ${worker}.pid ]; then
+for worker_dir in worker*; do
+    [ -d "$worker_dir" ] || continue
+    worker="$(basename "$worker_dir")"
     echo "Stopping ${worker}..."
-    ssh-keygen -f '/home/testuser/.ssh/known_hosts' -R '${worker_ip}'
-    sudo kill \$(sudo cat ${worker}.pid) 2>/dev/null
-    sudo rm ${worker}/overlay.qcow2
-fi
-EOF
-    done
+    if [ -f "${worker}.pid" ]; then
+        sudo kill $(sudo cat "${worker}.pid") 2>/dev/null
+    fi
+    sudo rm "${worker}/overlay.qcow2" 2>/dev/null
+done
 
-    cat >> stop-all.sh <<'STOPSCRIPT'
 echo "All VMs stopped"
 STOPSCRIPT
     chmod +x stop-all.sh
@@ -914,7 +896,7 @@ CONTROL
         pci1="$(worker_pci1 $i)"
         pci2="$(worker_pci2 $i)"
 
-        cat > "start-${worker}.sh" <<EOF
+        cat > "start-${worker}.sh" <<WORKER
 #!/bin/bash
 # Start k3s worker VM (headless)
 
@@ -940,7 +922,7 @@ sudo /usr/bin/qemu-system-x86_64 \\
     -drive file=${worker}/overlay.qcow2,if=virtio,format=qcow2,cache=writeback \\
     -drive file=${worker}/cloud-init.iso,index=1,media=cdrom \\
     -serial file:${worker}-serial.log
-EOF
+WORKER
         chmod +x "start-${worker}.sh"
     done
 }
