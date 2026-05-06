@@ -25,18 +25,18 @@ BOLD='\033[1m'
 RESET='\033[0m'
 
 # ── Helpers
-log()  { echo -e "${CYAN}[INFO]${RESET} $*" }
-ok()   { echo -e "${GREEN}[OK]${RESET} $*" }
-warn() { echo -e "${YELLOW}[WARN]${RESET} $*" }
-die()  { echo -e "${RED}[ERROR]${RESET} $*" >&2; exit 1 }
+log()  { echo -e "${CYAN}[INFO]${RESET} $*"; }
+ok()   { echo -e "${GREEN}[OK]${RESET} $*"; }
+warn() { echo -e "${YELLOW}[WARN]${RESET} $*"; }
+die()  { echo -e "${RED}[ERROR]${RESET} $*" >&2; exit 1; }
 
-worker_name() { echo "worker${1}" }
-worker_ip() { echo "172.16.0.$((10 + $1))" }
-worker_mac() { printf '52:54:00:12:34:%02x\n' $((0x10 + $1)) }
-worker_uplink1_ip() { echo "192.168.1.$(($1 + 1))" }
-worker_uplink2_ip() { echo "192.168.2.$(($1 + 1))" }
-worker_pci1() { printf '0000:b8:01.%x\n' $(($1 - 1)) }
-worker_pci2() { printf '0000:ba:01.%x\n' $(($1 - 1)) }
+worker_name() { echo "worker${1}"; }
+worker_ip() { echo "172.16.0.$((10 + $1))"; }
+worker_mac() { printf '52:54:00:12:34:%02x\n' $((0x10 + $1)); }
+worker_uplink1_ip() { echo "192.168.1.$(($1 + 1))"; }
+worker_uplink2_ip() { echo "192.168.2.$(($1 + 1))"; }
+worker_pci1() { printf '0000:b8:01.%x\n' $(($1 - 1)); }
+worker_pci2() { printf '0000:ba:01.%x\n' $(($1 - 1)); }
 
 usage() {
   grep '^#' "$0" | grep -v '#!/' | sed 's/^# \{0,1\}//'
@@ -639,8 +639,8 @@ create_init_workers() {
         worker="$(worker_name ${i})"
         worker_ip="$(worker_ip "${i}")"
         worker_mac="$(worker_mac "${i}")"
-        uplink1_ip="$(worker_uplink1_ip "${i}")"
-        uplink2_ip="$(worker_uplink2_ip "${i}")"
+        uplink1_ip="$(worker_uplink1_ip ${i})"
+        uplink2_ip="$(worker_uplink2_ip ${i})"
 
         # Create meta-data file
         cat > "$worker"/meta-data <<EOF
@@ -834,6 +834,7 @@ echo ${WORKER_COUNT} | sudo tee /sys/class/net/ens1281np0/device/sriov_numvfs
 
 sudo python3 /opt/dpdk/usertools/dpdk-devbind.py -b vfio-pci${pci_devices}
 PCISCRIPT
+
     chmod +x setup-pci.sh
 }
 
@@ -908,36 +909,36 @@ CONTROL
         local worker_mac
         local pci1
         local pci2
-        worker="$(worker_name "$i")"
-        worker_mac="$(worker_mac "$i")"
-        pci1="$(worker_pci1 "$i")"
-        pci2="$(worker_pci2 "$i")"
+        worker="$(worker_name $i)"
+        worker_mac="$(worker_mac $i)"
+        pci1="$(worker_pci1 $i)"
+        pci2="$(worker_pci2 $i)"
 
         cat > "start-${worker}.sh" <<EOF
 #!/bin/bash
 # Start k3s worker VM (headless)
 
-sudo /usr/bin/qemu-system-x86_64 \
-    -daemonize \
-    -nodefaults \
-    -name ${worker},debug-threads=on \
-    -no-user-config \
-    -nographic \
-    -enable-kvm \
-    -netdev bridge,id=net0,br=br-kubernetes \
-    -device virtio-net-pci,netdev=net0,mac=${worker_mac} \
-    -device vfio-pci,host=${pci1},bus=pci.0,addr=0x5 \
-    -device vfio-pci,host=${pci2},bus=pci.0,addr=0x6 \
-    -pidfile ${worker}.pid \
-    -cpu host,migratable=on \
-    -machine pc,accel=kvm,usb=off,mem-merge=off,hpet=off \
-    -smp 10,sockets=10,dies=1,cores=1,threads=1 \
-    -object memory-backend-file,id=mem,size=16384M,mem-path=/dev/hugepages,share=on \
-    -m 16384M \
-    -overcommit mem-lock=off \
-    -numa node,memdev=mem \
-    -drive file=${worker}/overlay.qcow2,if=virtio,format=qcow2,cache=writeback \
-    -drive file=${worker}/cloud-init.iso,index=1,media=cdrom \
+sudo /usr/bin/qemu-system-x86_64 \\
+    -daemonize \\
+    -nodefaults \\
+    -name ${worker},debug-threads=on \\
+    -no-user-config \\
+    -nographic \\
+    -enable-kvm \\
+    -netdev bridge,id=net0,br=br-kubernetes \\
+    -device virtio-net-pci,netdev=net0,mac=${worker_mac} \\
+    -device vfio-pci,host=${pci1},bus=pci.0,addr=0x5 \\
+    -device vfio-pci,host=${pci2},bus=pci.0,addr=0x6 \\
+    -pidfile ${worker}.pid \\
+    -cpu host,migratable=on \\
+    -machine pc,accel=kvm,usb=off,mem-merge=off,hpet=off \\
+    -smp 10,sockets=10,dies=1,cores=1,threads=1 \\
+    -object memory-backend-file,id=mem,size=16384M,mem-path=/dev/hugepages,share=on \\
+    -m 16384M \\
+    -overcommit mem-lock=off \\
+    -numa node,memdev=mem \\
+    -drive file=${worker}/overlay.qcow2,if=virtio,format=qcow2,cache=writeback \\
+    -drive file=${worker}/cloud-init.iso,index=1,media=cdrom \\
     -serial file:${worker}-serial.log
 EOF
         chmod +x "start-${worker}.sh"
