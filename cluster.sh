@@ -773,16 +773,16 @@ create_init_iso() {
 
 # ── Create Network Bridge Script
 create_init_network() {
-    log "[8/9] Creating network script..."
-
     if [[ "$SETUP_NET" == true ]]; then
+        log "[8/9] Creating network script..."
+
         # Check if bridge already exists
         if ip link show "$BRIDGE_NAME" &> /dev/null; then
-            echo "Bridge $BRIDGE_NAME already exists"
+            warn "Bridge $BRIDGE_NAME already exists"
             return 0
         fi
 
-        echo "Creating bridge network $BRIDGE_NAME..."
+        log "Creating bridge network $BRIDGE_NAME..."
 
         # Create bridge
         sudo ip link add name "$BRIDGE_NAME" type bridge
@@ -796,9 +796,9 @@ create_init_network() {
         sudo iptables -t nat -A POSTROUTING -s $NETWORK_CIDR ! -d $NETWORK_CIDR -j MASQUERADE
         sudo iptables -A FORWARD -i "$BRIDGE_NAME" -o "$BRIDGE_NAME" -j ACCEPT
 
-        echo "Bridge network created successfully!"
-        echo "Bridge IP: 172.16.0.1"
-        echo "Network: $NETWORK_CIDR"
+        log "Bridge network created successfully!"
+        log "Bridge IP: 172.16.0.1"
+        log "Network: $NETWORK_CIDR"
 
         sudo mkdir -p /etc/qemu/
         echo "allow br-kubernetes" | sudo tee /etc/qemu/bridge.conf
