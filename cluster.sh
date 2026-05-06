@@ -1,17 +1,15 @@
 #!/bin/bash
 # K3s Cluster Setup with QEMU VMs
 
-SCRIPTDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+# script configuration
+export BASE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 [ ! -f .env ] || export $(grep -v '^#' .env | xargs)
-
-# script configuration
-export BASE_DIR=${SCRIPTDIR:-$(pwd)}
 
 # vm configuration
 export BASE_IMAGE=${BASE_IMAGE:-"noble-server-cloudimg-amd64.img"}
 export CONTROL_IP=${CONTROL_IP:-"172.16.0.10"}
-export WORKER1_IP=${WORKER1_IP:-"172.16.0.11"}
+export WORKER_COUNT=${WORKER_COUNT:-1}
 export NETWORK_CIDR=${NETWORK_CIDR:-"172.16.0.0/24"}
 export BRIDGE_NAME=${BRIDGE_NAME:-"br-kubernetes"}
 
@@ -27,10 +25,18 @@ BOLD='\033[1m'
 RESET='\033[0m'
 
 # ── Helpers
-log()  { echo -e "${CYAN}[INFO]${RESET}  $*"; }
-ok()   { echo -e "${GREEN}[OK]${RESET}    $*"; }
-warn() { echo -e "${YELLOW}[WARN]${RESET}  $*"; }
-die()  { echo -e "${RED}[ERROR]${RESET} $*" >&2; exit 1; }
+log()  { echo -e "${CYAN}[INFO]${RESET} $*" }
+ok()   { echo -e "${GREEN}[OK]${RESET} $*" }
+warn() { echo -e "${YELLOW}[WARN]${RESET} $*" }
+die()  { echo -e "${RED}[ERROR]${RESET} $*" >&2; exit 1 }
+
+worker_name() { echo "worker${1}" }
+worker_ip() { echo "172.16.0.$((10 + $1))" }
+worker_mac() { printf '52:54:00:12:34:%02x\n' $((0x10 + $1)) }
+worker_uplink1_ip() { echo "192.168.1.$(($1 + 1))" }
+worker_uplink2_ip() { echo "192.168.2.$(($1 + 1))" }
+worker_pci1() { printf '0000:b8:01.%x\n' $(($1 - 1)) }
+worker_pci2() { printf '0000:ba:01.%x\n' $(($1 - 1)) }
 
 usage() {
   grep '^#' "$0" | grep -v '#!/' | sed 's/^# \{0,1\}//'
@@ -61,7 +67,10 @@ create_ssh_keys() {
 create_dir_structure() {
     log "[2/9] Creating directory structure"
 
-    mkdir -p "$BASE_DIR"/{control,worker1}
+    mkdir -p "$BASE_DIR"/control
+    for i in $(seq 1 "$WORKER_COUNT"); do
+        mkdir -p "$BASE_DIR/$(worker_name ${i})"
+    done
     cd "$BASE_DIR"
 }
 
@@ -80,7 +89,9 @@ create_backing_store() {
     log "[4/9] Creating VM disk images..."
 
     qemu-img create -f qcow2 -F qcow2 -b "../$BASE_IMAGE" control/overlay.qcow2 20G
-    qemu-img create -f qcow2 -F qcow2 -b "../$BASE_IMAGE" worker1/overlay.qcow2 20G
+    for i in $(seq 1 "$WORKER_COUNT"); do
+        qemu-img create -f qcow2 -F qcow2 -b "../$BASE_IMAGE" "$(worker_name ${i})/overlay.qcow2" 20G
+    done
 }
 
 # ── Create Cloud-Init configuration for Control Plane
@@ -614,28 +625,41 @@ final_message: |
 EOF
 }
 
-# ── Create Cloud-Init Files for Worker
-create_init_worker1() {
-    log "[6/9] Creating cloud-init configuration for worker..."
+# ── Create Cloud-Init Files for Workers
+create_init_workers() {
+    log "[6/9] Creating cloud-init configuration for workers..."
 
-    # Create meta-data file
-    cat > worker1/meta-data <<EOF
-instance-id: worker1
-local-hostname: worker1
+    for i in $(seq 1 "$WORKER_COUNT"); do
+        local worker
+        local worker_ip
+        local worker_mac
+        local uplink1_ip
+        local uplink2_ip
+
+        worker="$(worker_name ${i})"
+        worker_ip="$(worker_ip "${i}")"
+        worker_mac="$(worker_mac "${i}")"
+        uplink1_ip="$(worker_uplink1_ip "${i}")"
+        uplink2_ip="$(worker_uplink2_ip "${i}")"
+
+        # Create meta-data file
+        cat > "$worker"/meta-data <<EOF
+instance-id: ${worker}
+local-hostname: ${worker}
 EOF
 
-    # Create network-config (optional - for static IP)
-    cat > worker1/network-config <<EOF
+        # Create network-config (optional - for static IP)
+        cat > "$worker"/network-config <<EOF
 network:
   version: 2
   ethernets:
     ens2:
       match:
-        macaddress: '52:54:00:12:34:11'
+        macaddress: '${worker_mac}'
       dhcp4: no
       dhcp6: no
       addresses:
-        - ${WORKER1_IP}/24
+        - ${worker_ip}/24
       routes:
       - to: 0.0.0.0/0
         via: 172.16.0.1
@@ -645,7 +669,7 @@ network:
         - 1.1.1.1
 EOF
 
-    cat > worker1/user-data <<EOF
+        cat > "$worker"/user-data <<EOF
 #cloud-config
 
 apt:
@@ -721,8 +745,8 @@ runcmd:
   - modprobe vfio-pci
   - swapoff -a
   - echo 4096 | sudo tee /proc/sys/vm/nr_hugepages
-  - ip a add 192.168.1.2/24 dev ens5
-  - ip a add 192.168.2.2/24 dev ens6
+  - ip a add ${uplink1_ip}/24 dev ens5
+  - ip a add ${uplink2_ip}/24 dev ens6
   - ip n add 192.168.1.1 lladdr 40:a6:b7:ca:2a:70 dev ens5
   - ip n add 192.168.2.1 lladdr 40:a6:b7:ca:2a:74 dev ens6
   - ip l set dev ens5 up
@@ -736,10 +760,11 @@ runcmd:
   - curl -sfL https://get.k3s.io | K3S_URL=https://${CONTROL_IP}:6443 K3S_TOKEN=12345 sh -s -
 
 final_message: |
-  K3s Worker1 Ready!
-  Node IP: ${WORKER1_IP}
-  Access: ssh testuser@${WORKER1_IP}
+  K3s ${worker} Ready!
+  Node IP: ${worker_ip}
+  Access: ssh testuser@${worker_ip}
 EOF
+    done
 }
 
 # ── Create Cloud-Init ISOs
@@ -748,8 +773,12 @@ create_init_iso() {
 
     # Control plane ISO
     cloud-localds control/cloud-init.iso control/user-data control/meta-data --network-config control/network-config
-    # Worker ISO
-    cloud-localds worker1/cloud-init.iso worker1/user-data worker1/meta-data --network-config worker1/network-config
+    # Worker ISOs
+    for i in $(seq 1 "$WORKER_COUNT"); do
+        local worker
+        worker="$(worker_name ${i})"
+        cloud-localds "${worker}/cloud-init.iso" "${worker}/user-data" "${worker}/meta-data" --network-config "${worker}/network-config"
+    done
 }
 
 # ── Create Network Bridge Script
@@ -789,16 +818,21 @@ echo "allow br-kubernetes" | sudo tee /etc/qemu/bridge.conf
 NETSCRIPT
     chmod +x setup-network.sh
 
-    cat > setup-pci.sh <<'PCISCRIPT'
+    local pci_devices=""
+    for i in $(seq 1 "$WORKER_COUNT"); do
+        pci_devices="${pci_devices} $(worker_pci1 ${i}) $(worker_pci2 ${i})"
+    done
+
+    cat > setup-pci.sh <<PCISCRIPT
 #!/bin/bash
 # Setup PCI interfaces
 
 sudo python3 /opt/dpdk/usertools/dpdk-devbind.py -b ice 0000:b8:00.0 0000:ba:00.0
 
-echo 1 | sudo tee /sys/class/net/ens1280np0/device/sriov_numvfs
-echo 1 | sudo tee /sys/class/net/ens1281np0/device/sriov_numvfs
+echo ${WORKER_COUNT} | sudo tee /sys/class/net/ens1280np0/device/sriov_numvfs
+echo ${WORKER_COUNT} | sudo tee /sys/class/net/ens1281np0/device/sriov_numvfs
 
-sudo python3 /opt/dpdk/usertools/dpdk-devbind.py -b vfio-pci 0000:b8:01.0 0000:ba:01.0
+sudo python3 /opt/dpdk/usertools/dpdk-devbind.py -b vfio-pci${pci_devices}
 PCISCRIPT
     chmod +x setup-pci.sh
 }
@@ -819,14 +853,24 @@ if [ -f control.pid ]; then
     sudo kill $(sudo cat control.pid) 2>/dev/null
     sudo rm control/overlay.qcow2
 fi
+STOPSCRIPT
 
-if [ -f worker1.pid ]; then
-    echo "Stopping worker1..."
-    ssh-keygen -f '/home/testuser/.ssh/known_hosts' -R '172.16.0.11'
-    sudo kill $(sudo cat worker1.pid) 2>/dev/null
-    sudo rm worker1/overlay.qcow2
+    for i in $(seq 1 "$WORKER_COUNT"); do
+        local worker
+        local worker_ip
+        worker="$(worker_name "$i")"
+        worker_ip="$(worker_ip "$i")"
+        cat >> stop-all.sh <<EOF
+if [ -f ${worker}.pid ]; then
+    echo "Stopping ${worker}..."
+    ssh-keygen -f '/home/testuser/.ssh/known_hosts' -R '${worker_ip}'
+    sudo kill \$(sudo cat ${worker}.pid) 2>/dev/null
+    sudo rm ${worker}/overlay.qcow2
 fi
+EOF
+    done
 
+    cat >> stop-all.sh <<'STOPSCRIPT'
 echo "All VMs stopped"
 STOPSCRIPT
     chmod +x stop-all.sh
@@ -859,22 +903,32 @@ sudo /usr/bin/qemu-system-x86_64 \
 CONTROL
     chmod +x start-control.sh
 
-    cat > start-worker1.sh <<'WORKER'
+    for i in $(seq 1 "$WORKER_COUNT"); do
+        local worker
+        local worker_mac
+        local pci1
+        local pci2
+        worker="$(worker_name "$i")"
+        worker_mac="$(worker_mac "$i")"
+        pci1="$(worker_pci1 "$i")"
+        pci2="$(worker_pci2 "$i")"
+
+        cat > "start-${worker}.sh" <<EOF
 #!/bin/bash
 # Start k3s worker VM (headless)
 
 sudo /usr/bin/qemu-system-x86_64 \
     -daemonize \
     -nodefaults \
-    -name worker1,debug-threads=on \
+    -name ${worker},debug-threads=on \
     -no-user-config \
     -nographic \
     -enable-kvm \
     -netdev bridge,id=net0,br=br-kubernetes \
-    -device virtio-net-pci,netdev=net0,mac=52:54:00:12:34:11 \
-    -device vfio-pci,host=0000:b8:01.0,bus=pci.0,addr=0x5 \
-    -device vfio-pci,host=0000:ba:01.0,bus=pci.0,addr=0x6 \
-    -pidfile worker1.pid \
+    -device virtio-net-pci,netdev=net0,mac=${worker_mac} \
+    -device vfio-pci,host=${pci1},bus=pci.0,addr=0x5 \
+    -device vfio-pci,host=${pci2},bus=pci.0,addr=0x6 \
+    -pidfile ${worker}.pid \
     -cpu host,migratable=on \
     -machine pc,accel=kvm,usb=off,mem-merge=off,hpet=off \
     -smp 10,sockets=10,dies=1,cores=1,threads=1 \
@@ -882,21 +936,20 @@ sudo /usr/bin/qemu-system-x86_64 \
     -m 16384M \
     -overcommit mem-lock=off \
     -numa node,memdev=mem \
-    -drive file=worker1/overlay.qcow2,if=virtio,format=qcow2,cache=writeback \
-    -drive file=worker1/cloud-init.iso,index=1,media=cdrom \
-    -serial file:worker1-serial.log
-WORKER
-    chmod +x start-worker1.sh
+    -drive file=${worker}/overlay.qcow2,if=virtio,format=qcow2,cache=writeback \
+    -drive file=${worker}/cloud-init.iso,index=1,media=cdrom \
+    -serial file:${worker}-serial.log
+EOF
+        chmod +x "start-${worker}.sh"
+    done
 }
-
 
 create_ssh_keys
 create_dir_structure
 download_cloud_image
 create_backing_store
 create_init_control
-create_init_worker1
+create_init_workers
 create_init_iso
 create_init_network
 create_init_vms
-
