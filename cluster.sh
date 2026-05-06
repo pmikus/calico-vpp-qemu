@@ -779,7 +779,7 @@ create_init_network() {
         # Check if bridge already exists
         if ip link show "$BRIDGE_NAME" &> /dev/null; then
             echo "Bridge $BRIDGE_NAME already exists"
-            exit 0
+            return 0
         fi
 
         echo "Creating bridge network $BRIDGE_NAME..."
