@@ -605,13 +605,13 @@ runcmd:
   - kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.3/manifests/tigera-operator.yaml
   - kubectl create -f /etc/calico-vpp-multinet.yaml
   - kubectl get nodes
-  - curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 -o /usr/share/bin/kubectl-calico
-  - chmod +x /usr/share/bin/kubectl-calico
+  - curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 -o /usr/local/bin/kubectl-calico
+  - chmod +x /usr/local/bin/kubectl-calico
 
 final_message: |
   K3s Control Plane Ready!
   Node IP: ${CONTROL_IP}
-  Access: ssh testuser@${CONTROL_IP}
+  Access: ssh -o "UserKnownHostsFile=/dev/null" testuser@${CONTROL_IP}
 EOF
 }
 
@@ -730,9 +730,9 @@ runcmd:
   - systemctl daemon-reload
   - modprobe br_netfilter
   - modprobe overlay
-  - echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode
-  - modprobe vfio enable_unsafe_noiommu_mode=1
-  - modprobe vfio-pci
+  - #echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode
+  - #modprobe vfio enable_unsafe_noiommu_mode=1
+  - #modprobe vfio-pci
   - swapoff -a
   - echo 4096 | sudo tee /proc/sys/vm/nr_hugepages
   - ip a add ${uplink1_ip}/24 dev ens5
@@ -752,7 +752,7 @@ runcmd:
 final_message: |
   K3s ${worker} Ready!
   Node IP: ${worker_ip}
-  Access: ssh testuser@${worker_ip}
+  Access: ssh -o "UserKnownHostsFile=/dev/null" testuser@${worker_ip}
 EOF
     done
 }
