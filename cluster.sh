@@ -803,12 +803,11 @@ create_init_network() {
         fi
     fi
 
-    local pci_devices=""
-    for i in $(seq 1 "$WORKER_COUNT"); do
-        pci_devices="${pci_devices} $(worker_pci1 ${i}) $(worker_pci2 ${i})"
-    done
-
     if [[ "$SETUP_PCI" == true ]]; then
+        local pci_devices=""
+        for i in $(seq 1 "$WORKER_COUNT"); do
+            pci_devices="${pci_devices} $(worker_pci1 ${i}) $(worker_pci2 ${i})"
+        done
         sudo python3 /opt/dpdk/usertools/dpdk-devbind.py -b ice 0000:b8:00.0 0000:ba:00.0
 
         echo 0 | sudo tee /sys/class/net/ens1280np0/device/sriov_numvfs
