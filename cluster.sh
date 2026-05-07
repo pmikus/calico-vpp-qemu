@@ -604,7 +604,7 @@ runcmd:
   - kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.3/manifests/operator-crds.yaml
   - kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.3/manifests/tigera-operator.yaml
   - kubectl create -f /etc/calico-vpp-multinet.yaml
-  - kubectl get nodes
+  - kubectl get pods -A
   - curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 -o /usr/local/bin/kubectl-calico
   - chmod +x /usr/local/bin/kubectl-calico
 
@@ -730,11 +730,13 @@ runcmd:
   - systemctl daemon-reload
   - modprobe br_netfilter
   - modprobe overlay
-  - #echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode
-  - #modprobe vfio enable_unsafe_noiommu_mode=1
-  - #modprobe vfio-pci
   - swapoff -a
   - echo 4096 | sudo tee /proc/sys/vm/nr_hugepages
+  - curl -L https://github.com/intel/ethernet-linux-iavf/releases/download/v4.13.20/iavf-4.13.20.tar.gz -o /opt/iavf-4.13.20.tar.gz
+  - cd /opt/ && tar xzf iavf-4.13.20.tar.gz
+  - cd /opt/iavf-4.13.20/src && make install
+  - curl -L https://raw.githubusercontent.com/DPDK/dpdk/refs/heads/main/usertools/dpdk-devbind.py -o /opt/dpdk-devbind.py
+  - python3 /opt/dpdk-devbind.py -b iavf 0000:00:05.0 0000:00:06.0
   - ip a add ${uplink1_ip}/24 dev ens5
   - ip a add ${uplink2_ip}/24 dev ens6
   - ip n add 192.168.1.1 lladdr 40:a6:b7:ca:2a:70 dev ens5
@@ -743,9 +745,6 @@ runcmd:
   - ip l set dev ens6 up
   - ip route add 10.0.0.0/8 via 192.168.1.1
   - ip route add 20.0.0.0/8 via 192.168.2.1
-  - curl -L https://github.com/intel/ethernet-linux-iavf/releases/download/v4.13.20/iavf-4.13.20.tar.gz -o /opt/iavf-4.13.20.tar.gz
-  - cd /opt/ && tar xzf iavf-4.13.20.tar.gz
-  - cd /opt/iavf-4.13.20/src && make install
   - timeout 300 bash -c 'until ping -c 1 ${CONTROL_IP} >/dev/null 2>&1; do sleep 5; done'
   - curl -sfL https://get.k3s.io | K3S_URL=https://${CONTROL_IP}:6443 K3S_TOKEN=12345 sh -s -
 
