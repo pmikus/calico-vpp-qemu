@@ -396,13 +396,13 @@ write_files:
               {
                 "interfaceName": "ens5",
                 "vppDriver": "avf",
-                "rx": 8,
+                "rx": 4,
                 "rxMode": "polling"
               },
               {
                 "interfaceName": "ens6",
                 "vppDriver": "avf",
-                "rx": 8,
+                "rx": 4,
                 "rxMode": "polling"
               }
             ]
@@ -730,6 +730,9 @@ runcmd:
   - systemctl daemon-reload
   - modprobe br_netfilter
   - modprobe overlay
+  - echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode
+  - modprobe vfio enable_unsafe_noiommu_mode=1
+  - modprobe vfio-pci
   - swapoff -a
   - echo 4096 | sudo tee /proc/sys/vm/nr_hugepages
   - curl -L https://github.com/intel/ethernet-linux-iavf/releases/download/v4.13.20/iavf-4.13.20.tar.gz -o /opt/iavf-4.13.20.tar.gz
