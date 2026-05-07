@@ -431,8 +431,8 @@ write_files:
               k8s-app: calico-vpp-node
           spec:
             containers:
-            - image: docker.io/calicovpp/multinet-monitor:v3.31.0
-              imagePullPolicy: IfNotPresent
+            - image: docker.io/calicovpp/multinet-monitor:v3.32.0
+              imagePullPolicy: Always
               name: multinet-monitor
               resources:
                 requests:
@@ -472,8 +472,8 @@ write_files:
               envFrom:
               - configMapRef:
                   name: calico-vpp-config
-              image: docker.io/calicovpp/agent:v3.31.0
-              imagePullPolicy: IfNotPresent
+              image: docker.io/calicovpp/agent:v3.32.0
+              imagePullPolicy: Always
               name: agent
               resources:
                 requests:
@@ -504,8 +504,8 @@ write_files:
               envFrom:
               - configMapRef:
                   name: calico-vpp-config
-              image: docker.io/calicovpp/vpp:v3.31.0
-              imagePullPolicy: IfNotPresent
+              image: docker.io/calicovpp/vpp:v3.32.0
+              imagePullPolicy: Always
               name: vpp
               resources:
                 limits:
@@ -539,6 +539,7 @@ write_files:
             - command:
               - /entrypoint
               image: docker.io/calicovpp/install-whereabouts:v3.27.0
+              imagePullPolicy: Always
               name: install-whereabouts
               volumeMounts:
               - mountPath: /host/opt/cni/bin
@@ -601,12 +602,12 @@ runcmd:
   - modprobe overlay
   - swapoff -a
   - curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--flannel-backend=none --node-ip ${CONTROL_IP} --cluster-cidr ${K8S_POD_CIDR} --disable-network-policy --write-kubeconfig-mode 644 --token 12345" sh -s -
-  - kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.3/manifests/operator-crds.yaml
-  - kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.3/manifests/tigera-operator.yaml
+  - kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/operator-crds.yaml
+  - kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
   - kubectl create -f /etc/calico-vpp-multinet.yaml
   - kubectl get pods -A
-  - curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 -o /usr/local/bin/kubectl-calico
-  - chmod +x /usr/local/bin/kubectl-calico
+  - curl -L https://raw.githubusercontent.com/projectcalico/vpp-dataplane/v3.32.0/test/scripts/vppdev.sh -o /usr/bin/calicovppctl
+  - chmod +x /usr/bin/calicovppctl
 
 final_message: |
   K3s Control Plane Ready!
