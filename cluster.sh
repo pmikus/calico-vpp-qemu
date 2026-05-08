@@ -750,7 +750,7 @@ runcmd:
   - ip route add 10.0.0.0/8 via 192.168.1.1
   - ip route add 20.0.0.0/8 via 192.168.2.1
   - timeout 300 bash -c 'until ping -c 1 ${CONTROL_IP} >/dev/null 2>&1; do sleep 5; done'
-  - #curl -sfL https://get.k3s.io | K3S_URL=https://${CONTROL_IP}:6443 K3S_TOKEN=12345 sh -s -
+  - curl -sfL https://get.k3s.io | K3S_URL=https://${CONTROL_IP}:6443 K3S_TOKEN=12345 sh -s -
 
 final_message: |
   K3s ${worker} Ready!
